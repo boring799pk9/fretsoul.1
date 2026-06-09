@@ -1,0 +1,129 @@
+name: Build FretSoul APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # ── Patch AndroidManifest for AdMob ─────────────────────
+      - name: Patch AndroidManifest for AdMob
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+
+          # Add AdMob App ID meta-data inside <application> tag
+          # Real AdMob App ID
+          sed -i 's|</application>|    <meta-data\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\n            android:value="ca-app-pub-7372280807696183~4896142606"/>\n    </application>|' $MANIFEST
+
+          # Enable cleartext traffic for dev
+          sed -i 's/android:usesCleartextTraffic="false"/android:usesCleartextTraffic="true"/' $MANIFEST || true
+
+          echo "AndroidManifest patched:"
+          grep -A2 "APPLICATION_ID" $MANIFEST
+
+      # ── Patch build.gradle for AdMob ────────────────────────
+      - name: Patch build.gradle for AdMob
+        run: |
+          # Add Google services to project-level build.gradle
+          PROJ_GRADLE=android/build.gradle
+          if ! grep -q "google-services" $PROJ_GRADLE; then
+            sed -i "s|dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.0'|" $PROJ_GRADLE
+          fi
+
+          # Add Google Mobile Ads to app-level build.gradle
+          APP_GRADLE=android/app/build.gradle
+          if ! grep -q "play-services-ads" $APP_GRADLE; then
+            sed -i "s|dependencies {|dependencies {\n    implementation 'com.google.android.gms:play-services-ads:23.0.0'|" $APP_GRADLE
+          fi
+
+          echo "build.gradle patched"
+
+      # ── App metadata ─────────────────────────────────────────
+      - name: Set app name
+        run: |
+          sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">FretSoul<\/string>/' \
+            android/app/src/main/res/values/strings.xml
+
+      # ── Build ─────────────────────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.daemon=false"
+
+      # ── Upload artifact ───────────────────────────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FretSoul-v3.3-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      # ── Create Release ────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v3.3-build-${{ github.run_number }}
+          name: "FretSoul v3.3 (Build ${{ github.run_number }})"
+          body: |
+            ## FretSoul v3.3 — Ship Build
+
+            ### Install
+            1. Download `app-debug.apk` below
+            2. Transfer to your Android phone
+            3. Tap to install (enable "Install unknown apps" if prompted)
+
+            ### Features
+            - AI guitar tabs for any song (Gemini API)
+            - Vocal solo melody tabs — play what the singer sings
+            - Chord identifier via microphone (FFT analysis)
+            - Full chord library (98 chords + dynamic Gemini fetch)
+            - Tab player + metronome + tap tempo
+            - Transposer (+/- 6 semitones)
+            - Skill profile + XP + achievements + streaks
+            - Real saved library (persisted)
+            - Recent searches
+            - Trending songs
+            - Share tab as image card
+            - Google AdMob ads (Banner + Interstitial + Rewarded)
+            - Ad-free IAP option
+
+            ### AdMob Note
+            Uses **Google test ad IDs** — replace with real IDs before Play Store submission.
+            Real IDs: admob.google.com → Apps → Ad units
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

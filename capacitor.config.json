@@ -1,0 +1,29 @@
+{
+  "appId": "com.fretsoul.app",
+  "appName": "FretSoul",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": [
+      "generativelanguage.googleapis.com",
+      "www.youtube.com",
+      "youtube.com",
+      "fonts.googleapis.com",
+      "fonts.gstatic.com",
+      "images.unsplash.com",
+      "googleads.g.doubleclick.net",
+      "pagead2.googlesyndication.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#0d0700"
+  },
+  "plugins": {
+    "AdMob": {
+      "appId": "ca-app-pub-7372280807696183~4896142606"
+    }
+  }
+}
